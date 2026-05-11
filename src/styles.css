@@ -85,7 +85,7 @@ body,
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: 88px;
   background: #1c1c30ee;
   border: 1px solid #ffffff1a;
   border-radius: 14px;
@@ -151,6 +151,12 @@ body,
   color: #a0a0b8;
 }
 
+.hint {
+  font-size: 11px;
+  color: #ffd16699;
+  margin-top: 2px;
+}
+
 .selected-actions {
   display: flex;
   gap: 8px;
@@ -182,6 +188,39 @@ body,
 }
 
 .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fab {
+  position: absolute;
+  bottom: 18px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: #4a90e2;
+  box-shadow: 0 6px 18px #00000066;
+  z-index: 6;
+  cursor: pointer;
+}
+
+.fab:active {
+  transform: translateY(1px);
+}
+
+.fab-left {
+  left: 16px;
+}
+
+.fab-right {
+  right: 16px;
+  background: #2a2a44;
+}
+
+.fab:disabled {
   opacity: 0.45;
   cursor: default;
 }

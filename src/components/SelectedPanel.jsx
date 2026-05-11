@@ -16,6 +16,7 @@ export default function SelectedPanel() {
   const unitDef = unit ? UNIT_DEFS[unit.type] : null;
   const unitCiv = unit ? civs[unit.civId] : null;
   const cityCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
+  const moveLeft = unit && unitDef ? Math.max(0, unitDef.move - unit.moved) : 0;
 
   const canFound =
     unit &&
@@ -46,8 +47,15 @@ export default function SelectedPanel() {
               {unitCiv.name} {unitDef.name}
             </div>
             <div className="unit-stats">
-              ATK {unitDef.atk} · DEF {unitDef.def} · MV {unitDef.move}
+              ATK {unitDef.atk} · DEF {unitDef.def} · MV {moveLeft}/{unitDef.move}
+              {unitDef.ranged ? ' · Ranged' : ''}
             </div>
+            {unitCiv.isPlayer && moveLeft > 0 && unit.type !== UNIT.SETTLER && (
+              <div className="hint">Tap an adjacent hex to move or attack.</div>
+            )}
+            {unitCiv.isPlayer && unit.type === UNIT.SETTLER && moveLeft > 0 && (
+              <div className="hint">Move or found a city on plains.</div>
+            )}
           </div>
         </div>
       )}

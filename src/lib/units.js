@@ -26,3 +26,9 @@ export function createUnit(type, civId) {
     moved: 0,
   };
 }
+
+export function pickBestUnitType(techs) {
+  if (techs.includes('chivalry')) return UNIT.KNIGHT;
+  if (techs.includes('archery')) return UNIT.ARCHER;
+  return UNIT.WARRIOR;
+}

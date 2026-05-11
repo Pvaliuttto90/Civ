@@ -38,7 +38,7 @@ export default function HexMap() {
   const units = useGame((s) => s.units);
   const civs = useGame((s) => s.civs);
   const selectedHex = useGame((s) => s.selectedHex);
-  const selectHex = useGame((s) => s.selectHex);
+  const tapHex = useGame((s) => s.tapHex);
 
   const extents = mapExtents(hexes);
 
@@ -139,7 +139,7 @@ export default function HexMap() {
 
   function onHexClick(k) {
     if (didDrag.current) return;
-    selectHex(k);
+    tapHex(k);
   }
 
   const rect = containerRef.current?.getBoundingClientRect();
@@ -163,6 +163,8 @@ export default function HexMap() {
           const ownerCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
           const unit = hex.unitId ? units[hex.unitId] : null;
           const unitCiv = unit ? civs[unit.civId] : null;
+          const def = unit ? UNIT_DEFS[unit.type] : null;
+          const exhausted = unit && def ? unit.moved >= def.move : false;
           return (
             <g key={k} onClick={() => onHexClick(k)}>
               <polygon
@@ -201,8 +203,8 @@ export default function HexMap() {
                   />
                 </g>
               )}
-              {unit && unitCiv && (
-                <g pointerEvents="none">
+              {unit && unitCiv && def && (
+                <g pointerEvents="none" opacity={exhausted ? 0.55 : 1}>
                   <circle
                     cx={x}
                     cy={y + (ownerCiv ? 12 : 0)}
@@ -220,7 +222,7 @@ export default function HexMap() {
                     fontWeight={700}
                     fill="#fff"
                   >
-                    {UNIT_DEFS[unit.type].glyph}
+                    {def.glyph}
                   </text>
                 </g>
               )}
