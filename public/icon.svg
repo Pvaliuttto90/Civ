@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1a1a2e"/>
+  <polygon points="256,80 416,176 416,336 256,432 96,336 96,176" fill="#4a90e2"/>
+  <polygon points="256,140 364,202 364,310 256,372 148,310 148,202" fill="#1a1a2e"/>
+  <text x="256" y="310" text-anchor="middle" font-family="-apple-system, Segoe UI, sans-serif" font-size="170" font-weight="800" fill="#4a90e2">H</text>
+</svg>

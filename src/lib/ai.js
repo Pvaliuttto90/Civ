@@ -1,0 +1,187 @@
+import { CIV_IDS } from './civs.js';
+import { hexDistance, inBounds, key as hexKey, NEIGHBORS, parseKey } from './hex.js';
+import { TERRAIN } from './terrain.js';
+import { UNIT, UNIT_DEFS } from './units.js';
+import {
+  canEnter,
+  findUnitLocation,
+  foundCityAt,
+  moveUnit,
+  resolveAttack,
+  terrainCost,
+} from './actions.js';
+import { effectiveAtk, effectiveDef } from './combat.js';
+import { canResearch, currentEra, ERA_COSTS, TECHS_BY_ERA } from './tech.js';
+
+const AI_TECH_PRIORITY = {
+  red: ['archery', 'masonry', 'agriculture', 'chivalry', 'fortification', 'trade', 'industrialism', 'nationalism', 'commerce'],
+  green: ['agriculture', 'masonry', 'archery', 'trade', 'fortification', 'chivalry', 'commerce', 'industrialism', 'nationalism'],
+};
+
+function settlerTarget(state, unit) {
+  const loc = findUnitLocation(state.hexes, unit.id);
+  if (!loc) return null;
+  const here = state.hexes[loc];
+  if (here.terrain === TERRAIN.PLAINS && !here.cityOwnerId) return loc;
+  const from = parseKey(loc);
+  let best = null;
+  let bestDist = Infinity;
+  for (const [k, hex] of Object.entries(state.hexes)) {
+    if (hex.terrain !== TERRAIN.PLAINS) continue;
+    if (hex.cityOwnerId) continue;
+    if (hex.unitId && hex.unitId !== unit.id) continue;
+    const d = hexDistance(from, parseKey(k));
+    if (d < bestDist) {
+      bestDist = d;
+      best = k;
+    }
+  }
+  return best;
+}
+
+function combatTarget(state, unit) {
+  const loc = findUnitLocation(state.hexes, unit.id);
+  if (!loc) return null;
+  const from = parseKey(loc);
+  let best = null;
+  let bestDist = Infinity;
+  // Prefer enemy cities.
+  for (const [k, hex] of Object.entries(state.hexes)) {
+    if (!hex.cityOwnerId || hex.cityOwnerId === unit.civId) continue;
+    const d = hexDistance(from, parseKey(k));
+    if (d < bestDist) {
+      bestDist = d;
+      best = k;
+    }
+  }
+  if (best) return best;
+  // Then enemy units.
+  for (const u of Object.values(state.units)) {
+    if (u.civId === unit.civId) continue;
+    const oloc = findUnitLocation(state.hexes, u.id);
+    if (!oloc) continue;
+    const d = hexDistance(from, parseKey(oloc));
+    if (d < bestDist) {
+      bestDist = d;
+      best = oloc;
+    }
+  }
+  return best;
+}
+
+function stepToward(state, unitId, targetKey) {
+  let s = state;
+  let guard = 8;
+  while (guard-- > 0) {
+    const u = s.units[unitId];
+    if (!u) return s;
+    const def = UNIT_DEFS[u.type];
+    const moveLeft = def.move - u.moved;
+    if (moveLeft <= 0) return s;
+    const fromKey = findUnitLocation(s.hexes, unitId);
+    if (!fromKey || fromKey === targetKey) return s;
+    const from = parseKey(fromKey);
+    const tgt = parseKey(targetKey);
+
+    // Consider neighbors.
+    let best = null;
+    let bestScore = Infinity;
+    for (const n of NEIGHBORS) {
+      const c = { q: from.q + n.q, r: from.r + n.r };
+      if (!inBounds(c.q, c.r)) continue;
+      const k = hexKey(c.q, c.r);
+      const hex = s.hexes[k];
+      if (!hex || hex.terrain === TERRAIN.WATER) continue;
+      const occupant = hex.unitId ? s.units[hex.unitId] : null;
+      if (occupant && occupant.civId === u.civId) continue;
+      const isEnemy = !!(occupant && occupant.civId !== u.civId);
+      const cost = terrainCost(hex);
+      if (!isEnemy && cost > moveLeft) continue;
+      const d = hexDistance(c, tgt);
+      const score = d * 10 + cost + (isEnemy ? 0 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = { key: k, hex, occupant, isEnemy, cost };
+      }
+    }
+    if (!best) return s;
+
+    if (best.isEnemy) {
+      if (u.type === UNIT.SETTLER) return s;
+      const atk = effectiveAtk(u, s.civs);
+      const defVal = effectiveDef(best.occupant, best.hex, s.civs);
+      if (atk >= defVal * 0.85) {
+        s = resolveAttack(s, u, best.occupant, fromKey, best.key);
+      }
+      return s;
+    }
+    if (!canEnter(s, best.hex, u)) return s;
+    s = moveUnit(s, u, fromKey, best.key, best.cost);
+  }
+  return s;
+}
+
+function researchIfPossible(state, civId) {
+  const civ = state.civs[civId];
+  if (!civ || civ.isEliminated) return state;
+  const era = currentEra(civ);
+  const cost = ERA_COSTS[era];
+  if (civ.gold < cost) return state;
+  const priority = AI_TECH_PRIORITY[civId] || TECHS_BY_ERA[era];
+  const next = priority.find((t) => canResearch(civ, t));
+  if (!next) return state;
+  return {
+    ...state,
+    civs: {
+      ...state.civs,
+      [civId]: {
+        ...civ,
+        gold: civ.gold - cost,
+        techs: [...civ.techs, next],
+      },
+    },
+  };
+}
+
+export function runAI(state) {
+  let s = state;
+  for (const civId of CIV_IDS) {
+    if (civId === 'player') continue;
+    const civ = s.civs[civId];
+    if (!civ || civ.isEliminated) continue;
+
+    // Act with each unit (snapshot ids; some may die mid-turn).
+    const unitIds = Object.values(s.units)
+      .filter((u) => u.civId === civId)
+      .map((u) => u.id);
+    for (const uid of unitIds) {
+      let u = s.units[uid];
+      if (!u) continue;
+      if (u.type === UNIT.SETTLER) {
+        const loc = findUnitLocation(s.hexes, uid);
+        const hex = loc ? s.hexes[loc] : null;
+        if (hex && hex.terrain === TERRAIN.PLAINS && !hex.cityOwnerId) {
+          s = foundCityAt(s, loc, civId);
+          continue;
+        }
+        const tgt = settlerTarget(s, u);
+        if (tgt && tgt !== loc) s = stepToward(s, uid, tgt);
+        // Try founding after moving.
+        u = s.units[uid];
+        if (u) {
+          const loc2 = findUnitLocation(s.hexes, uid);
+          const hex2 = loc2 ? s.hexes[loc2] : null;
+          if (hex2 && hex2.terrain === TERRAIN.PLAINS && !hex2.cityOwnerId) {
+            s = foundCityAt(s, loc2, civId);
+          }
+        }
+      } else {
+        const tgt = combatTarget(s, u);
+        if (tgt) s = stepToward(s, uid, tgt);
+      }
+    }
+
+    s = researchIfPossible(s, civId);
+  }
+  return s;
+}
