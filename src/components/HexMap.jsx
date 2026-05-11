@@ -6,12 +6,11 @@ import {
   HEX_RADIUS,
   HEX_WIDTH,
   hexPoints,
-  key as hexKey,
   parseKey,
 } from '../lib/hex.js';
 import { TERRAIN_COLORS } from '../lib/terrain.js';
+import { UNIT_DEFS } from '../lib/units.js';
 
-// Compute map extents so we can frame the viewBox.
 function mapExtents(hexes) {
   let minX = Infinity,
     minY = Infinity,
@@ -36,12 +35,13 @@ function mapExtents(hexes) {
 
 export default function HexMap() {
   const hexes = useGame((s) => s.hexes);
+  const units = useGame((s) => s.units);
+  const civs = useGame((s) => s.civs);
   const selectedHex = useGame((s) => s.selectedHex);
   const selectHex = useGame((s) => s.selectHex);
 
   const extents = mapExtents(hexes);
 
-  // Pan + zoom state.
   const [view, setView] = useState({ x: extents.x, y: extents.y, scale: 1 });
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -52,7 +52,6 @@ export default function HexMap() {
   const pinchState = useRef(null);
   const didDrag = useRef(false);
 
-  // Fit-to-screen on mount when the container has measured size.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -118,7 +117,6 @@ export default function HexMap() {
       const dist = Math.hypot(dx, dy);
       const ratio = dist / pinchState.current.dist;
       const newScale = Math.max(0.4, Math.min(2.5, pinchState.current.scale * ratio));
-      // Keep pinch midpoint stable in world space.
       const rect = containerRef.current.getBoundingClientRect();
       const mx = pinchState.current.midX - rect.left;
       const my = pinchState.current.midY - rect.top;
@@ -162,14 +160,71 @@ export default function HexMap() {
           const { q, r } = parseKey(k);
           const { x, y } = axialToPixel(q, r);
           const isSelected = selectedHex === k;
+          const ownerCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
+          const unit = hex.unitId ? units[hex.unitId] : null;
+          const unitCiv = unit ? civs[unit.civId] : null;
           return (
-            <polygon
-              key={k}
-              className={`hex${isSelected ? ' selected' : ''}`}
-              points={hexPoints(x, y)}
-              fill={TERRAIN_COLORS[hex.terrain]}
-              onClick={() => onHexClick(k)}
-            />
+            <g key={k} onClick={() => onHexClick(k)}>
+              <polygon
+                className={`hex${isSelected ? ' selected' : ''}`}
+                points={hexPoints(x, y)}
+                fill={TERRAIN_COLORS[hex.terrain]}
+              />
+              {ownerCiv && (
+                <polygon
+                  points={hexPoints(x, y)}
+                  fill={ownerCiv.color}
+                  fillOpacity="0.35"
+                  pointerEvents="none"
+                />
+              )}
+              {ownerCiv && (
+                <g pointerEvents="none">
+                  <rect
+                    x={x - 10}
+                    y={y - 22}
+                    width={20}
+                    height={14}
+                    rx={2}
+                    fill={ownerCiv.color}
+                    stroke="#000"
+                    strokeOpacity="0.4"
+                  />
+                  <line
+                    x1={x - 10}
+                    y1={y - 22}
+                    x2={x - 10}
+                    y2={y + 4}
+                    stroke="#000"
+                    strokeOpacity="0.5"
+                    strokeWidth={1}
+                  />
+                </g>
+              )}
+              {unit && unitCiv && (
+                <g pointerEvents="none">
+                  <circle
+                    cx={x}
+                    cy={y + (ownerCiv ? 12 : 0)}
+                    r={18}
+                    fill={unitCiv.color}
+                    stroke="#000"
+                    strokeOpacity="0.5"
+                    strokeWidth={1.5}
+                  />
+                  <text
+                    x={x}
+                    y={y + (ownerCiv ? 12 : 0) + 5}
+                    textAnchor="middle"
+                    fontSize={18}
+                    fontWeight={700}
+                    fill="#fff"
+                  >
+                    {UNIT_DEFS[unit.type].glyph}
+                  </text>
+                </g>
+              )}
+            </g>
           );
         })}
       </svg>
