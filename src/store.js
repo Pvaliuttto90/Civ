@@ -11,6 +11,7 @@ import {
 import { canResearch, ERA_COSTS, TECHS } from './lib/tech.js';
 import { runAI } from './lib/ai.js';
 import { applyUpkeep } from './lib/upkeep.js';
+import { withVictoryCheck } from './lib/victory.js';
 
 export const useGame = create((set, get) => ({
   ...buildInitialState(),
@@ -18,6 +19,7 @@ export const useGame = create((set, get) => ({
   phase: 'player',
   selectedHex: null,
   techModalOpen: false,
+  result: null,
 
   tapHex: (toKey) => {
     const s = get();
@@ -41,17 +43,23 @@ export const useGame = create((set, get) => ({
                 const next = resolveAttack(s, myUnit, targetUnit, fromKey, toKey);
                 const attackerSurvived = !!next.units[myUnit.id];
                 const ranged = !!def.ranged;
-                set({
-                  ...next,
-                  selectedHex: attackerSurvived ? (ranged ? fromKey : toKey) : null,
-                });
+                set(
+                  withVictoryCheck({
+                    ...next,
+                    selectedHex: attackerSurvived
+                      ? ranged
+                        ? fromKey
+                        : toKey
+                      : null,
+                  })
+                );
                 return;
               }
             } else if (!targetUnit && target.terrain !== TERRAIN.WATER) {
               const cost = TERRAIN_COST[target.terrain];
               if (moveLeft >= cost) {
                 const next = moveUnit(s, myUnit, fromKey, toKey, cost);
-                set({ ...next, selectedHex: toKey });
+                set(withVictoryCheck({ ...next, selectedHex: toKey }));
                 return;
               }
             }
@@ -67,7 +75,7 @@ export const useGame = create((set, get) => ({
       const hex = s.hexes[hexKey];
       const unit = hex?.unitId ? s.units[hex.unitId] : null;
       if (!unit) return s;
-      return foundCityAt(s, hexKey, unit.civId);
+      return withVictoryCheck(foundCityAt(s, hexKey, unit.civId));
     }),
 
   setTechModalOpen: (open) => set({ techModalOpen: open }),
@@ -95,12 +103,13 @@ export const useGame = create((set, get) => ({
     set({ phase: 'ai', selectedHex: null });
     const afterAI = runAI(get());
     const afterUpkeep = applyUpkeep(afterAI);
-    set({
+    const next = {
       ...afterUpkeep,
       turn: s.turn + 1,
       phase: 'player',
       selectedHex: null,
-    });
+    };
+    set(withVictoryCheck(next));
   },
 
   reset: () =>
@@ -110,5 +119,6 @@ export const useGame = create((set, get) => ({
       phase: 'player',
       selectedHex: null,
       techModalOpen: false,
+      result: null,
     }),
 }));
