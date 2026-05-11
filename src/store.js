@@ -4,6 +4,7 @@ import { createUnit, pickBestUnitType, UNIT, UNIT_DEFS } from './lib/units.js';
 import { TERRAIN, TERRAIN_COST } from './lib/terrain.js';
 import { hexDistance, parseKey } from './lib/hex.js';
 import { effectiveAtk, effectiveDef, rollCombat } from './lib/combat.js';
+import { canResearch, ERA_COSTS, TECHS } from './lib/tech.js';
 
 function goldPerCity(civ) {
   let g = 1;
@@ -42,7 +43,6 @@ function resolveAttack(state, attacker, defender, fromKey, toKey) {
 
   const newUnits = { ...state.units };
   const newHexes = { ...state.hexes };
-  // The attacker spends all remaining moves regardless of outcome.
   newUnits[attacker.id] = { ...attacker, moved: atkDef.move };
 
   let nextSelected = state.selectedHex;
@@ -75,10 +75,8 @@ export const useGame = create((set, get) => ({
   turn: 1,
   phase: 'player',
   selectedHex: null,
-  lastCombat: null,
+  techModalOpen: false,
 
-  // Tapping a hex either selects it or resolves a move/attack from the
-  // currently selected player unit.
   tapHex: (toKey) => {
     const s = get();
     if (s.phase !== 'player') return;
@@ -97,9 +95,7 @@ export const useGame = create((set, get) => ({
           if (moveLeft > 0) {
             const targetUnit = target.unitId ? s.units[target.unitId] : null;
             if (targetUnit && targetUnit.civId !== myUnit.civId) {
-              if (myUnit.type === UNIT.SETTLER) {
-                // Settlers can't attack; fall through to select.
-              } else {
+              if (myUnit.type !== UNIT.SETTLER) {
                 set(resolveAttack(s, myUnit, targetUnit, fromKey, toKey));
                 return;
               }
@@ -145,16 +141,33 @@ export const useGame = create((set, get) => ({
       };
     }),
 
+  setTechModalOpen: (open) => set({ techModalOpen: open }),
+
+  researchTech: (techId) =>
+    set((s) => {
+      const civ = s.civs.player;
+      if (!civ || !canResearch(civ, techId)) return s;
+      const cost = ERA_COSTS[TECHS[techId].era];
+      return {
+        civs: {
+          ...s.civs,
+          player: {
+            ...civ,
+            gold: civ.gold - cost,
+            techs: [...civ.techs, techId],
+          },
+        },
+      };
+    }),
+
   endTurn: () => {
     const s = get();
     if (s.phase !== 'player') return;
-    // Transition through AI phase (no-op until AI is implemented).
     set({ phase: 'ai' });
     const civs = { ...get().civs };
     let units = { ...get().units };
     let hexes = { ...get().hexes };
 
-    // Cities: gold income + production tick.
     for (const [k, hex] of Object.entries(hexes)) {
       if (!hex.cityOwnerId) continue;
       const owner = civs[hex.cityOwnerId];
@@ -173,7 +186,6 @@ export const useGame = create((set, get) => ({
       }
     }
 
-    // Reset per-turn move budgets.
     for (const uId of Object.keys(units)) {
       units[uId] = { ...units[uId], moved: 0 };
     }
@@ -194,6 +206,6 @@ export const useGame = create((set, get) => ({
       turn: 1,
       phase: 'player',
       selectedHex: null,
-      lastCombat: null,
+      techModalOpen: false,
     }),
 }));
