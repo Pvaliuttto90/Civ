@@ -1,0 +1,19 @@
+{
+  "name": "Hex Empire",
+  "short_name": "HexEmpire",
+  "description": "Turn-based 4X-lite hex strategy game.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

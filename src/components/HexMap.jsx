@@ -165,6 +165,7 @@ export default function HexMap() {
           const unitCiv = unit ? civs[unit.civId] : null;
           const def = unit ? UNIT_DEFS[unit.type] : null;
           const exhausted = unit && def ? unit.moved >= def.move : false;
+          const progress = ownerCiv ? Math.min(3, hex.cityProgress ?? 0) : 0;
           return (
             <g key={k} onClick={() => onHexClick(k)}>
               <polygon
@@ -200,6 +201,22 @@ export default function HexMap() {
                     stroke="#000"
                     strokeOpacity="0.5"
                     strokeWidth={1}
+                  />
+                  <rect
+                    x={x - 14}
+                    y={y - 30}
+                    width={28}
+                    height={3}
+                    rx={1}
+                    fill="#00000066"
+                  />
+                  <rect
+                    x={x - 14}
+                    y={y - 30}
+                    width={28 * (progress / 3)}
+                    height={3}
+                    rx={1}
+                    fill="#ffd166"
                   />
                 </g>
               )}

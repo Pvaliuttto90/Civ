@@ -13,6 +13,8 @@ import { runAI } from './lib/ai.js';
 import { applyUpkeep } from './lib/upkeep.js';
 import { withVictoryCheck } from './lib/victory.js';
 
+const AI_DELAY_MS = 220;
+
 export const useGame = create((set, get) => ({
   ...buildInitialState(),
   turn: 1,
@@ -101,15 +103,20 @@ export const useGame = create((set, get) => ({
     const s = get();
     if (s.phase !== 'player') return;
     set({ phase: 'ai', selectedHex: null });
-    const afterAI = runAI(get());
-    const afterUpkeep = applyUpkeep(afterAI);
-    const next = {
-      ...afterUpkeep,
-      turn: s.turn + 1,
-      phase: 'player',
-      selectedHex: null,
-    };
-    set(withVictoryCheck(next));
+    // Defer AI resolution so the 'AI thinking...' indicator can paint.
+    setTimeout(() => {
+      const cur = get();
+      if (cur.phase !== 'ai') return;
+      const afterAI = runAI(cur);
+      const afterUpkeep = applyUpkeep(afterAI);
+      const next = {
+        ...afterUpkeep,
+        turn: cur.turn + 1,
+        phase: 'player',
+        selectedHex: null,
+      };
+      set(withVictoryCheck(next));
+    }, AI_DELAY_MS);
   },
 
   reset: () =>
