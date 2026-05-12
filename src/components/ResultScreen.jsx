@@ -1,20 +1,33 @@
 import { useGame } from '../store.js';
 
 export default function ResultScreen() {
-  const phase = useGame((s) => s.phase);
   const result = useGame((s) => s.result);
   const reset = useGame((s) => s.reset);
-  if (phase !== 'result' || !result) return null;
+  const playerCivId = useGame((s) => s.playerCivId);
+  const civs = useGame((s) => s.civs);
+  const player = playerCivId ? civs[playerCivId] : null;
+  if (!result) return null;
+
   return (
     <div className="result-screen">
       <div className="result-card">
         <div className={`result-title ${result.won ? 'win' : 'lose'}`}>
-          {result.won ? 'Victory!' : 'Defeat'}
+          {result.won ? 'Victory' : 'Defeat'}
         </div>
         <div className="result-stats">
-          <div>Turn reached: {result.turn}</div>
-          <div>Cities held: {result.cities}</div>
-          <div>Techs researched: {result.techs}</div>
+          {result.reason && <div>{result.reason}</div>}
+          <div>Turn {result.turn}</div>
+          {result.faction && (
+            <div>
+              {result.won ? 'Winner' : 'Won by'}: {result.faction}
+            </div>
+          )}
+          {player && (
+            <div>
+              {player.name} — fuel {player.fuel ?? 0} · scrap{' '}
+              {player.scrap ?? 0} · ichor {player.ichor ?? 0}
+            </div>
+          )}
         </div>
         <button className="btn" onClick={reset}>
           Play Again

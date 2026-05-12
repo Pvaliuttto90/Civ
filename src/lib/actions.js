@@ -14,6 +14,12 @@ const REPAIR_HP_GAIN = 2;
 const BOMB_FUEL_COST = 12;
 const BOMB_FUSE_TURNS = 3;
 
+function cascadeMul(state) {
+  return state.scrapCascadeUntil != null && state.turn <= state.scrapCascadeUntil
+    ? 2
+    : 1;
+}
+
 export function moveUnit(state, unit, fromKey, toKey, cost) {
   const newUnits = { ...state.units };
   newUnits[unit.id] = { ...unit, moved: unit.moved + cost };
@@ -21,8 +27,6 @@ export function moveUnit(state, unit, fromKey, toKey, cost) {
   const fromHex = newHexes[fromKey];
   const targetHex = newHexes[toKey];
 
-  // Reclaimers leave a cleaner trail — the hex they walk off of loses 1
-  // pollution. Cheap, mobile remediation; offset by Reclaimer's fragility.
   let fromAfter = { ...fromHex, unitId: null };
   if (unit.type === UNIT.RECLAIMER) {
     const p = fromAfter.pollution ?? 0;
@@ -60,10 +64,9 @@ export function resolveAttack(state, attacker, defender, fromKey, toKey) {
 
   if (attackerWins) {
     delete newUnits[defender.id];
-    const drop = 1 + Math.floor(Math.random() * 3);
+    const mul = cascadeMul(state);
+    const drop = (1 + Math.floor(Math.random() * 3)) * mul;
 
-    // Runner fuel theft — win on attack moves fuel from defender to
-    // attacker and grows attacker's stolenFuelTotal (their win track).
     const traits = atkCiv.traits || {};
     if (traits.fuelGeneration === 'theft' && traits.stealOnAttack) {
       const defCiv = newCivs[defCivId];

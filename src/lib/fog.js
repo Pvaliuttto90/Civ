@@ -7,14 +7,15 @@ function unitHexKey(state, unitId) {
   return null;
 }
 
-// Sight range is per-civ now (Runners get 3, others 2). Later commits
-// may add per-hex modifiers (Engineers next to their own station).
 export function getSightRange(state, civId) {
-  return state.civs?.[civId]?.sightRange ?? 2;
+  let r = state.civs?.[civId]?.sightRange ?? 2;
+  // Smog Blackout dims everyone's vision for the turn it fired.
+  if (state.smogActiveUntil != null && state.turn <= state.smogActiveUntil) {
+    r = Math.max(1, r - 1);
+  }
+  return r;
 }
 
-// Hex keys currently visible to `civId`, derived from its units +
-// cities at the civ's sight range.
 export function computeVisible(state, civId) {
   const range = getSightRange(state, civId);
   const visible = new Set();
