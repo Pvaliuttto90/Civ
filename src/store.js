@@ -10,7 +10,11 @@ import {
 } from './lib/actions.js';
 import { canResearch, ERA_COSTS, TECHS } from './lib/tech.js';
 import { runAI } from './lib/ai.js';
-import { applyUpkeep } from './lib/upkeep.js';
+import {
+  applyUpkeep,
+  resolveIncomePhase,
+  resolvePollutionPhase,
+} from './lib/upkeep.js';
 import { withVictoryCheck } from './lib/victory.js';
 import { withFogUpdate } from './lib/fog.js';
 
@@ -40,10 +44,10 @@ export const useGame = create((set, get) => ({
         break;
       }
     }
-    const next = withFogUpdate(
-      { ...s, civs, playerCivId: factionId, phase: 'player' },
-      factionId
-    );
+    let next = { ...s, civs, playerCivId: factionId, phase: 'player' };
+    // Turn 1's income phase fires before the player gets to act.
+    next = resolveIncomePhase(next);
+    next = withFogUpdate(next, factionId);
     set({ ...next, selectedHex: startingHex });
   },
 
@@ -124,6 +128,14 @@ export const useGame = create((set, get) => ({
       };
     }),
 
+  // End-of-turn pipeline. Order:
+  //   1. AI Action phase (player has just finished theirs).
+  //   2. Pollution Phase — oil ticks, slag conversion at 5.
+  //   3. Legacy upkeep — gold/production/move reset/elimination.
+  //   4. Advance turn counter.
+  //   5. Event Phase (commit 4 will wire this slot).
+  //   6. Income Phase for the new turn — fuel/scrap/ichor and ichor damage.
+  //   7. Victory check + player fog update.
   endTurn: () => {
     const s = get();
     if (s.phase !== 'player') return;
@@ -131,15 +143,20 @@ export const useGame = create((set, get) => ({
     setTimeout(() => {
       const cur = get();
       if (cur.phase !== 'ai') return;
-      const afterAI = runAI(cur);
-      const afterUpkeep = applyUpkeep(afterAI);
-      const next = {
-        ...afterUpkeep,
-        turn: cur.turn + 1,
+
+      let next = cur;
+      next = runAI(next);
+      next = resolvePollutionPhase(next);
+      next = applyUpkeep(next);
+      next = { ...next, turn: cur.turn + 1 };
+      // resolveEventPhase slot — commit 4.
+      next = resolveIncomePhase(next);
+      next = withVictoryCheck({
+        ...next,
         phase: 'player',
         selectedHex: null,
-      };
-      set(withVictoryCheck(next));
+      });
+      set(next);
     }, AI_DELAY_MS);
   },
 

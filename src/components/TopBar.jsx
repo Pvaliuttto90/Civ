@@ -1,5 +1,4 @@
 import { useGame } from '../store.js';
-import { eraName } from '../lib/era.js';
 import { CIV_IDS } from '../lib/civs.js';
 
 export default function TopBar() {
@@ -9,12 +8,10 @@ export default function TopBar() {
   const hexes = useGame((s) => s.hexes);
   const playerCivId = useGame((s) => s.playerCivId);
   const player = playerCivId ? civs[playerCivId] : null;
-  const playerGold = player?.gold ?? 0;
-  const techCount = player?.techs.length ?? 0;
 
-  const cityCount = {};
-  for (const h of Object.values(hexes)) {
-    if (h.cityOwnerId) cityCount[h.cityOwnerId] = (cityCount[h.cityOwnerId] || 0) + 1;
+  const unitCount = {};
+  for (const u of Object.values(useGame.getState().units)) {
+    unitCount[u.civId] = (unitCount[u.civId] || 0) + 1;
   }
 
   if (phase === 'faction-pick') return null;
@@ -26,12 +23,16 @@ export default function TopBar() {
         <div className="stat-value">{turn}</div>
       </div>
       <div className="stat">
-        <div className="stat-label">Gold</div>
-        <div className="stat-value">{playerGold}</div>
+        <div className="stat-label">Fuel</div>
+        <div className="stat-value">{player?.fuel ?? 0}</div>
       </div>
       <div className="stat">
-        <div className="stat-label">Era</div>
-        <div className="stat-value">{eraName(techCount)}</div>
+        <div className="stat-label">Scrap</div>
+        <div className="stat-value">{player?.scrap ?? 0}</div>
+      </div>
+      <div className="stat">
+        <div className="stat-label">Ichor</div>
+        <div className="stat-value">{player?.ichor ?? 0}</div>
       </div>
       <div className="civ-legend">
         {CIV_IDS.map((id) => {
@@ -41,10 +42,10 @@ export default function TopBar() {
             <div
               key={id}
               className={`civ-chip${civ.isEliminated ? ' dead' : ''}`}
-              title={`${civ.name}: ${cityCount[id] || 0} cities`}
+              title={`${civ.name}: ${unitCount[id] || 0} units`}
             >
               <span className="civ-dot" style={{ background: civ.color }} />
-              <span className="civ-count">{cityCount[id] || 0}</span>
+              <span className="civ-count">{unitCount[id] || 0}</span>
             </div>
           );
         })}

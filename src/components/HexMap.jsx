@@ -199,6 +199,9 @@ export default function HexMap() {
           const exhausted = unit && def ? unit.moved >= def.move : false;
           const progress = ownerCiv ? Math.min(3, hex.cityProgress ?? 0) : 0;
           const pollution = Math.max(0, Math.min(5, hex.pollution ?? 0));
+          const scrapPile = isVisible ? (hex.scrapPile ?? 0) : 0;
+          const showHp =
+            unit && def && (unit.hp ?? def.hp) < def.hp;
 
           return (
             <g key={k} onClick={() => onHexClick(k)} opacity={isVisible ? 1 : 0.55}>
@@ -221,6 +224,30 @@ export default function HexMap() {
                       strokeWidth={0.5}
                     />
                   ))}
+                </g>
+              )}
+              {scrapPile > 0 && (
+                <g pointerEvents="none">
+                  <rect
+                    x={x + 12}
+                    y={y - 6}
+                    width={14}
+                    height={12}
+                    rx={2}
+                    fill="#7a7a90"
+                    stroke="#000"
+                    strokeOpacity="0.5"
+                  />
+                  <text
+                    x={x + 19}
+                    y={y + 3}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fontWeight={700}
+                    fill="#1a1a2e"
+                  >
+                    {scrapPile}
+                  </text>
                 </g>
               )}
               {ownerCiv && (
@@ -295,6 +322,21 @@ export default function HexMap() {
                   >
                     {def.glyph}
                   </text>
+                  {showHp && (
+                    <text
+                      x={x}
+                      y={y + (ownerCiv ? 32 : 20)}
+                      textAnchor="middle"
+                      fontSize={9}
+                      fontWeight={700}
+                      fill="#ff8a8a"
+                      stroke="#000"
+                      strokeOpacity="0.5"
+                      strokeWidth={0.3}
+                    >
+                      {unit.hp}/{def.hp}
+                    </text>
+                  )}
                 </g>
               )}
             </g>
