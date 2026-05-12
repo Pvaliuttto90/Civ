@@ -20,10 +20,20 @@ import {
   resolveIncomePhase,
   resolvePollutionPhase,
 } from './lib/upkeep.js';
+import { resolveEventPhase } from './lib/events.js';
 import { withVictoryCheck } from './lib/victory.js';
 import { withFogUpdate } from './lib/fog.js';
 
 const AI_DELAY_MS = 260;
+
+const FRESH_EVENT_STATE = {
+  eventDeck: [],
+  pendingEvent: null,
+  thresholdsFired: [false, false],
+  lastEvent: null,
+  scrapCascadeUntil: null,
+  smogActiveUntil: null,
+};
 
 export const useGame = create((set, get) => ({
   ...buildInitialState(),
@@ -33,6 +43,7 @@ export const useGame = create((set, get) => ({
   techModalOpen: false,
   result: null,
   playerCivId: null,
+  ...FRESH_EVENT_STATE,
 
   pickFaction: (factionId) => {
     const s = get();
@@ -180,7 +191,7 @@ export const useGame = create((set, get) => ({
       next = resolvePollutionPhase(next);
       next = applyUpkeep(next);
       next = { ...next, turn: cur.turn + 1 };
-      // resolveEventPhase slot — commit 4.
+      next = resolveEventPhase(next);
       next = resolveIncomePhase(next);
       next = withVictoryCheck({
         ...next,
@@ -200,5 +211,6 @@ export const useGame = create((set, get) => ({
       techModalOpen: false,
       result: null,
       playerCivId: null,
+      ...FRESH_EVENT_STATE,
     }),
 }));

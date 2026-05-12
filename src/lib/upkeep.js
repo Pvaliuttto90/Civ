@@ -14,10 +14,17 @@ function productionRate(civ) {
   return civ.techs.includes('industrialism') ? 1.5 : 1;
 }
 
+function cascadeMultiplier(state) {
+  return state.scrapCascadeUntil != null && state.turn <= state.scrapCascadeUntil
+    ? 2
+    : 1;
+}
+
 export function resolveIncomePhase(state) {
   let units = { ...state.units };
   const hexes = { ...state.hexes };
   const civs = { ...state.civs };
+  const mul = cascadeMultiplier(state);
 
   for (const civId of Object.keys(civs)) {
     const civ = civs[civId];
@@ -36,12 +43,8 @@ export function resolveIncomePhase(state) {
       const u = units[hex.unitId];
       if (!u || u.civId !== civId) continue;
 
-      if (hex.terrain === TERRAIN.OIL && !isThief) {
-        fuel += fuelYield;
-      }
-      if (hex.terrain === TERRAIN.RUINS) {
-        scrap += 1;
-      }
+      if (hex.terrain === TERRAIN.OIL && !isThief) fuel += fuelYield;
+      if (hex.terrain === TERRAIN.RUINS) scrap += 1;
       if (hex.scrapPile && hex.scrapPile > 0) {
         scrap += hex.scrapPile;
         hexes[k] = { ...hexes[k], scrapPile: 0 };
@@ -53,7 +56,7 @@ export function resolveIncomePhase(state) {
         if (!ichorImmune) {
           const newHp = (u.hp ?? 3) - 1;
           if (newHp <= 0) {
-            const drop = 1 + Math.floor(Math.random() * 3);
+            const drop = (1 + Math.floor(Math.random() * 3)) * mul;
             const cur = hexes[k];
             hexes[k] = {
               ...cur,
@@ -78,6 +81,7 @@ export function resolvePollutionPhase(state) {
   const hexes = { ...state.hexes };
   let units = { ...state.units };
   const explosions = [];
+  const mul = cascadeMultiplier(state);
 
   for (const k of Object.keys(hexes)) {
     const hex = hexes[k];
@@ -127,7 +131,6 @@ export function resolvePollutionPhase(state) {
     if (exploded) explosions.push(k);
   }
 
-  // Reclamation Bomb explosion: 2 damage to units on adjacent hexes.
   for (const k of explosions) {
     const { q, r } = parseKey(k);
     for (const n of neighbors(q, r)) {
@@ -138,7 +141,7 @@ export function resolvePollutionPhase(state) {
       if (!u) continue;
       const newHp = (u.hp ?? 3) - 2;
       if (newHp <= 0) {
-        const drop = 1 + Math.floor(Math.random() * 3);
+        const drop = (1 + Math.floor(Math.random() * 3)) * mul;
         hexes[nk] = {
           ...nh,
           unitId: null,
@@ -154,8 +157,6 @@ export function resolvePollutionPhase(state) {
   return { ...state, hexes, units };
 }
 
-// Legacy Civ upkeep — still firing during graft so any City that
-// somehow exists keeps producing. Bases don't go through this path.
 export function applyUpkeep(state) {
   const civs = { ...state.civs };
   let units = { ...state.units };
