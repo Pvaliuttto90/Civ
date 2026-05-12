@@ -51,6 +51,21 @@ export function inBounds(q, r) {
   return q >= 0 && q < MAP_COLS && r >= 0 && r < MAP_ROWS;
 }
 
+// All in-bounds hexes within `range` steps of (q, r), inclusive.
+export function hexesInRange(q, r, range) {
+  const out = [];
+  for (let dq = -range; dq <= range; dq++) {
+    const drMin = Math.max(-range, -dq - range);
+    const drMax = Math.min(range, -dq + range);
+    for (let dr = drMin; dr <= drMax; dr++) {
+      const nq = q + dq;
+      const nr = r + dr;
+      if (inBounds(nq, nr)) out.push({ q: nq, r: nr });
+    }
+  }
+  return out;
+}
+
 // SVG polygon points string for a pointy-top hex centered at (cx, cy).
 export function hexPoints(cx, cy, r = HEX_RADIUS) {
   const pts = [];
