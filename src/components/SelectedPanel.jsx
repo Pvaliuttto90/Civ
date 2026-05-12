@@ -8,7 +8,9 @@ export default function SelectedPanel() {
   const units = useGame((s) => s.units);
   const civs = useGame((s) => s.civs);
   const foundCity = useGame((s) => s.foundCity);
+  const phase = useGame((s) => s.phase);
 
+  if (phase === 'faction-pick') return null;
   if (!selectedHex) return null;
   const hex = hexes[selectedHex];
   if (!hex) return null;
@@ -17,12 +19,13 @@ export default function SelectedPanel() {
   const unitCiv = unit ? civs[unit.civId] : null;
   const cityCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
   const moveLeft = unit && unitDef ? Math.max(0, unitDef.move - unit.moved) : 0;
+  const pollution = hex.pollution ?? 0;
 
   const canFound =
     unit &&
     unit.type === UNIT.SETTLER &&
     unitCiv?.isPlayer &&
-    hex.terrain === TERRAIN.PLAINS &&
+    hex.terrain === TERRAIN.WILDERNESS &&
     !hex.cityOwnerId;
 
   return (
@@ -30,6 +33,9 @@ export default function SelectedPanel() {
       <div className="selected-row">
         <div className="selected-title">
           {hex.terrain[0].toUpperCase() + hex.terrain.slice(1)}
+          {pollution > 0 && (
+            <span className="selected-poll"> · pollution {pollution}</span>
+          )}
         </div>
         {cityCiv && (
           <div className="selected-tag" style={{ background: cityCiv.color }}>
@@ -54,7 +60,7 @@ export default function SelectedPanel() {
               <div className="hint">Tap an adjacent hex to move or attack.</div>
             )}
             {unitCiv.isPlayer && unit.type === UNIT.SETTLER && moveLeft > 0 && (
-              <div className="hint">Move or found a city on plains.</div>
+              <div className="hint">Move or found a city on wilderness.</div>
             )}
           </div>
         </div>

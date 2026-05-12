@@ -12,16 +12,40 @@ import { canResearch, ERA_COSTS, TECHS } from './lib/tech.js';
 import { runAI } from './lib/ai.js';
 import { applyUpkeep } from './lib/upkeep.js';
 import { withVictoryCheck } from './lib/victory.js';
+import { withFogUpdate } from './lib/fog.js';
 
 const AI_DELAY_MS = 220;
 
 export const useGame = create((set, get) => ({
   ...buildInitialState(),
   turn: 1,
-  phase: 'player',
+  phase: 'faction-pick',
   selectedHex: null,
   techModalOpen: false,
   result: null,
+  playerCivId: null,
+
+  pickFaction: (factionId) => {
+    const s = get();
+    if (s.phase !== 'faction-pick') return;
+    if (!s.civs[factionId]) return;
+    const civs = { ...s.civs };
+    for (const id of Object.keys(civs)) {
+      civs[id] = { ...civs[id], isPlayer: id === factionId };
+    }
+    let startingHex = null;
+    for (const [k, h] of Object.entries(s.hexes)) {
+      if (h.unitId && s.units[h.unitId]?.civId === factionId) {
+        startingHex = k;
+        break;
+      }
+    }
+    const next = withFogUpdate(
+      { ...s, civs, playerCivId: factionId, phase: 'player' },
+      factionId
+    );
+    set({ ...next, selectedHex: startingHex });
+  },
 
   tapHex: (toKey) => {
     const s = get();
@@ -57,7 +81,7 @@ export const useGame = create((set, get) => ({
                 );
                 return;
               }
-            } else if (!targetUnit && target.terrain !== TERRAIN.WATER) {
+            } else if (!targetUnit && target.terrain !== TERRAIN.SLAG) {
               const cost = TERRAIN_COST[target.terrain];
               if (moveLeft >= cost) {
                 const next = moveUnit(s, myUnit, fromKey, toKey, cost);
@@ -84,13 +108,14 @@ export const useGame = create((set, get) => ({
 
   researchTech: (techId) =>
     set((s) => {
-      const civ = s.civs.player;
+      const playerCivId = s.playerCivId;
+      const civ = playerCivId ? s.civs[playerCivId] : null;
       if (!civ || !canResearch(civ, techId)) return s;
       const cost = ERA_COSTS[TECHS[techId].era];
       return {
         civs: {
           ...s.civs,
-          player: {
+          [playerCivId]: {
             ...civ,
             gold: civ.gold - cost,
             techs: [...civ.techs, techId],
@@ -103,7 +128,6 @@ export const useGame = create((set, get) => ({
     const s = get();
     if (s.phase !== 'player') return;
     set({ phase: 'ai', selectedHex: null });
-    // Defer AI resolution so the 'AI thinking...' indicator can paint.
     setTimeout(() => {
       const cur = get();
       if (cur.phase !== 'ai') return;
@@ -123,9 +147,10 @@ export const useGame = create((set, get) => ({
     set({
       ...buildInitialState(),
       turn: 1,
-      phase: 'player',
+      phase: 'faction-pick',
       selectedHex: null,
       techModalOpen: false,
       result: null,
+      playerCivId: null,
     }),
 }));
