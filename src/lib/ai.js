@@ -3,45 +3,20 @@ import { hexDistance, inBounds, key as hexKey, NEIGHBORS, parseKey } from './hex
 import { TERRAIN } from './terrain.js';
 import { UNIT, UNIT_DEFS } from './units.js';
 import {
+  buildStation,
   canEnter,
+  deployUnit,
+  extractOil,
   findUnitLocation,
-  foundCityAt,
   moveUnit,
+  reclamationBomb,
+  repairUnit,
   resolveAttack,
   terrainCost,
 } from './actions.js';
 import { effectiveAtk, effectiveDef } from './combat.js';
-import { canResearch, currentEra, ERA_COSTS, TECHS_BY_ERA } from './tech.js';
 
-// Legacy tech priorities — dormant once tech tree is stripped, but
-// kept keyed by the new faction ids so research doesn't crash.
-const AI_TECH_PRIORITY = {
-  syndicate: ['agriculture', 'trade', 'commerce', 'masonry', 'fortification', 'archery', 'chivalry', 'industrialism', 'nationalism'],
-  blight: ['archery', 'masonry', 'agriculture', 'chivalry', 'fortification', 'trade', 'industrialism', 'nationalism', 'commerce'],
-  engineers: ['agriculture', 'masonry', 'archery', 'trade', 'fortification', 'chivalry', 'commerce', 'industrialism', 'nationalism'],
-  runners: ['archery', 'chivalry', 'nationalism', 'agriculture', 'masonry', 'trade', 'fortification', 'industrialism', 'commerce'],
-};
-
-function settlerTarget(state, unit) {
-  const loc = findUnitLocation(state.hexes, unit.id);
-  if (!loc) return null;
-  const here = state.hexes[loc];
-  if (here.terrain === TERRAIN.WILDERNESS && !here.cityOwnerId) return loc;
-  const from = parseKey(loc);
-  let best = null;
-  let bestDist = Infinity;
-  for (const [k, hex] of Object.entries(state.hexes)) {
-    if (hex.terrain !== TERRAIN.WILDERNESS) continue;
-    if (hex.cityOwnerId) continue;
-    if (hex.unitId && hex.unitId !== unit.id) continue;
-    const d = hexDistance(from, parseKey(k));
-    if (d < bestDist) {
-      bestDist = d;
-      best = k;
-    }
-  }
-  return best;
-}
+const AI_UNIT_CAP = 4;
 
 function combatTarget(state, unit) {
   const loc = findUnitLocation(state.hexes, unit.id);
@@ -49,15 +24,21 @@ function combatTarget(state, unit) {
   const from = parseKey(loc);
   let best = null;
   let bestDist = Infinity;
-  for (const [k, hex] of Object.entries(state.hexes)) {
-    if (!hex.cityOwnerId || hex.cityOwnerId === unit.civId) continue;
-    const d = hexDistance(from, parseKey(k));
+
+  // Prefer enemy Bases first — destroying an HQ wins a faction war.
+  for (const u of Object.values(state.units)) {
+    if (u.civId === unit.civId) continue;
+    if (u.type !== UNIT.BASE) continue;
+    const oloc = findUnitLocation(state.hexes, u.id);
+    if (!oloc) continue;
+    const d = hexDistance(from, parseKey(oloc));
     if (d < bestDist) {
       bestDist = d;
-      best = k;
+      best = oloc;
     }
   }
   if (best) return best;
+
   for (const u of Object.values(state.units)) {
     if (u.civId === unit.civId) continue;
     const oloc = findUnitLocation(state.hexes, u.id);
@@ -71,6 +52,24 @@ function combatTarget(state, unit) {
   return best;
 }
 
+function oilTarget(state, unit) {
+  const loc = findUnitLocation(state.hexes, unit.id);
+  if (!loc) return null;
+  const from = parseKey(loc);
+  let best = null;
+  let bestDist = Infinity;
+  for (const [k, hex] of Object.entries(state.hexes)) {
+    if (hex.terrain !== TERRAIN.OIL) continue;
+    if (hex.unitId && hex.unitId !== unit.id) continue;
+    const d = hexDistance(from, parseKey(k));
+    if (d < bestDist) {
+      bestDist = d;
+      best = k;
+    }
+  }
+  return best;
+}
+
 function stepToward(state, unitId, targetKey) {
   let s = state;
   let guard = 8;
@@ -78,6 +77,7 @@ function stepToward(state, unitId, targetKey) {
     const u = s.units[unitId];
     if (!u) return s;
     const def = UNIT_DEFS[u.type];
+    if (def?.immobile) return s;
     const moveLeft = def.move - u.moved;
     if (moveLeft <= 0) return s;
     const fromKey = findUnitLocation(s.hexes, unitId);
@@ -109,10 +109,10 @@ function stepToward(state, unitId, targetKey) {
     if (!best) return s;
 
     if (best.isEnemy) {
-      if (u.type === UNIT.SETTLER) return s;
-      const atk = effectiveAtk(u, s.civs);
+      const atk = effectiveAtk(u, s.civs, fromKey, s.hexes);
       const defVal = effectiveDef(best.occupant, best.hex, s.civs);
-      if (atk >= defVal * 0.85) {
+      const civ = s.civs[u.civId];
+      if (atk >= defVal * 0.85 && (civ?.fuel ?? 0) >= 2) {
         s = resolveAttack(s, u, best.occupant, fromKey, best.key);
       }
       return s;
@@ -123,28 +123,6 @@ function stepToward(state, unitId, targetKey) {
   return s;
 }
 
-function researchIfPossible(state, civId) {
-  const civ = state.civs[civId];
-  if (!civ || civ.isEliminated) return state;
-  const era = currentEra(civ);
-  const cost = ERA_COSTS[era];
-  if (civ.gold < cost) return state;
-  const priority = AI_TECH_PRIORITY[civId] || TECHS_BY_ERA[era];
-  const next = priority.find((t) => canResearch(civ, t));
-  if (!next) return state;
-  return {
-    ...state,
-    civs: {
-      ...state.civs,
-      [civId]: {
-        ...civ,
-        gold: civ.gold - cost,
-        techs: [...civ.techs, next],
-      },
-    },
-  };
-}
-
 export function runAI(state) {
   let s = state;
   const playerCivId = s.playerCivId;
@@ -153,36 +131,72 @@ export function runAI(state) {
     const civ = s.civs[civId];
     if (!civ || civ.isEliminated) continue;
 
-    const unitIds = Object.values(s.units)
-      .filter((u) => u.civId === civId)
-      .map((u) => u.id);
-    for (const uid of unitIds) {
-      let u = s.units[uid];
-      if (!u) continue;
-      if (u.type === UNIT.SETTLER) {
-        const loc = findUnitLocation(s.hexes, uid);
-        const hex = loc ? s.hexes[loc] : null;
-        if (hex && hex.terrain === TERRAIN.WILDERNESS && !hex.cityOwnerId) {
-          s = foundCityAt(s, loc, civId);
-          continue;
-        }
-        const tgt = settlerTarget(s, u);
-        if (tgt && tgt !== loc) s = stepToward(s, uid, tgt);
-        u = s.units[uid];
-        if (u) {
-          const loc2 = findUnitLocation(s.hexes, uid);
-          const hex2 = loc2 ? s.hexes[loc2] : null;
-          if (hex2 && hex2.terrain === TERRAIN.WILDERNESS && !hex2.cityOwnerId) {
-            s = foundCityAt(s, loc2, civId);
-          }
-        }
-      } else {
-        const tgt = combatTarget(s, u);
-        if (tgt) s = stepToward(s, uid, tgt);
+    // Deploy a Warrior if there's fuel and not too many units already.
+    const ownNonBase = Object.values(s.units).filter(
+      (u) => u.civId === civId && u.type !== UNIT.BASE
+    ).length;
+    if (ownNonBase < AI_UNIT_CAP && (s.civs[civId]?.fuel ?? 0) >= 3) {
+      s = deployUnit(s, civId, UNIT.WARRIOR);
+    }
+
+    // Engineers: build a station on a high-pollution hex they occupy.
+    if (civ.traits?.stationCostMod) {
+      for (const [k, h] of Object.entries(s.hexes)) {
+        if (!h.unitId) continue;
+        const u = s.units[h.unitId];
+        if (!u || u.civId !== civId) continue;
+        if (h.station) continue;
+        if ((h.pollution ?? 0) < 2) continue;
+        s = buildStation(s, k, civId);
+        break;
       }
     }
 
-    s = researchIfPossible(s, civId);
+    // Extract oil on every owned oil hex.
+    for (const [k, h] of Object.entries(s.hexes)) {
+      if (h.terrain !== TERRAIN.OIL || h.wasExtractedThisTurn) continue;
+      if (!h.unitId) continue;
+      const u = s.units[h.unitId];
+      if (!u || u.civId !== civId) continue;
+      s = extractOil(s, k, civId);
+    }
+
+    // Repair badly hurt units.
+    for (const [k, h] of Object.entries(s.hexes)) {
+      if (!h.unitId) continue;
+      const u = s.units[h.unitId];
+      if (!u || u.civId !== civId) continue;
+      const def = UNIT_DEFS[u.type];
+      if ((u.hp ?? def.hp) <= 1 && (s.civs[civId]?.scrap ?? 0) >= 2) {
+        s = repairUnit(s, k, civId);
+      }
+    }
+
+    // Reclamation Bomb on the worst-polluted slag if we can afford it.
+    if (!s.civs[civId]?.bombUsed && (s.civs[civId]?.fuel ?? 0) >= 12) {
+      let worst = null;
+      for (const [k, h] of Object.entries(s.hexes)) {
+        if (h.terrain !== TERRAIN.SLAG) continue;
+        if (h.bombFuse) continue;
+        worst = k;
+        break;
+      }
+      if (worst) s = reclamationBomb(s, worst, civId);
+    }
+
+    // Walk units toward enemy bases / oil.
+    const unitIds = Object.values(s.units)
+      .filter((u) => u.civId === civId && u.type !== UNIT.BASE)
+      .map((u) => u.id);
+    for (const uid of unitIds) {
+      const u = s.units[uid];
+      if (!u) continue;
+      const wantOil = (s.civs[civId]?.fuel ?? 0) < 6;
+      const tgt = wantOil
+        ? oilTarget(s, u) || combatTarget(s, u)
+        : combatTarget(s, u) || oilTarget(s, u);
+      if (tgt) s = stepToward(s, uid, tgt);
+    }
   }
   return s;
 }

@@ -1,10 +1,8 @@
 import { CIV_IDS, CIVS } from './civs.js';
 import { generateMap, TERRAIN } from './terrain.js';
-import { hexDistance, parseKey } from './hex.js';
+import { hexDistance, inBounds, key, NEIGHBORS, parseKey } from './hex.js';
 import { createUnit, UNIT } from './units.js';
 
-// Terrains a starting unit can stand on. Slag/river are excluded so
-// no faction begins stranded or in a deathzone.
 const STARTABLE = new Set([
   TERRAIN.WILDERNESS,
   TERRAIN.RUINS,
@@ -12,9 +10,24 @@ const STARTABLE = new Set([
   TERRAIN.BADLANDS,
 ]);
 
-// Build a fresh game state: map + one starter unit per faction, spaced
-// out. Fog is not initialised here — the player isn't chosen until
-// pickFaction runs, which then computes the player's first vision.
+const STARTING_FUEL = 10;
+const STARTING_SCRAP = 4;
+
+function findAdjacentEmpty(hexes, hexKey, allowSlag = false) {
+  const { q, r } = parseKey(hexKey);
+  for (const n of NEIGHBORS) {
+    const nq = q + n.q;
+    const nr = r + n.r;
+    if (!inBounds(nq, nr)) continue;
+    const k = key(nq, nr);
+    const h = hexes[k];
+    if (!h || h.unitId) continue;
+    if (!allowSlag && h.terrain === TERRAIN.SLAG) continue;
+    return k;
+  }
+  return null;
+}
+
 export function buildInitialState() {
   for (let attempt = 0; attempt < 30; attempt++) {
     const hexes = generateMap();
@@ -42,10 +55,7 @@ export function buildInitialState() {
         }
         pool.splice(idx, 1);
       }
-      if (!chosen) {
-        ok = false;
-        break;
-      }
+      if (!chosen) { ok = false; break; }
       picks.push(chosen);
     }
     if (!ok) continue;
@@ -64,17 +74,24 @@ export function buildInitialState() {
         techs: [],
         isEliminated: false,
         explored: [],
-        fuel: 0,
-        scrap: 0,
+        fuel: STARTING_FUEL,
+        scrap: STARTING_SCRAP,
         ichor: 0,
         sightRange: def.sightRange ?? 2,
         stolenFuelTotal: 0,
         bombUsed: false,
         traits: { ...def.traits },
       };
-      const u = createUnit(UNIT.SETTLER, civId);
-      units[u.id] = u;
-      hexes[picks[i]] = { ...hexes[picks[i]], unitId: u.id };
+      const base = createUnit(UNIT.BASE, civId);
+      units[base.id] = base;
+      hexes[picks[i]] = { ...hexes[picks[i]], unitId: base.id };
+
+      const adj = findAdjacentEmpty(hexes, picks[i], !!def.traits?.slagMoveCost);
+      if (adj) {
+        const warrior = createUnit(UNIT.WARRIOR, civId);
+        units[warrior.id] = warrior;
+        hexes[adj] = { ...hexes[adj], unitId: warrior.id };
+      }
     }
     return { hexes, units, civs };
   }

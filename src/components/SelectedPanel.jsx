@@ -7,8 +7,14 @@ export default function SelectedPanel() {
   const hexes = useGame((s) => s.hexes);
   const units = useGame((s) => s.units);
   const civs = useGame((s) => s.civs);
-  const foundCity = useGame((s) => s.foundCity);
+  const playerCivId = useGame((s) => s.playerCivId);
   const phase = useGame((s) => s.phase);
+
+  const extractOilAt = useGame((s) => s.extractOilAt);
+  const deployUnitOfType = useGame((s) => s.deployUnitOfType);
+  const buildStationAt = useGame((s) => s.buildStationAt);
+  const repairUnitAt = useGame((s) => s.repairUnitAt);
+  const reclamationBombAt = useGame((s) => s.reclamationBombAt);
 
   if (phase === 'faction-pick') return null;
   if (!selectedHex) return null;
@@ -17,16 +23,21 @@ export default function SelectedPanel() {
   const unit = hex.unitId ? units[hex.unitId] : null;
   const unitDef = unit ? UNIT_DEFS[unit.type] : null;
   const unitCiv = unit ? civs[unit.civId] : null;
-  const cityCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
+  const playerCiv = playerCivId ? civs[playerCivId] : null;
   const moveLeft = unit && unitDef ? Math.max(0, unitDef.move - unit.moved) : 0;
   const pollution = hex.pollution ?? 0;
-
-  const canFound =
-    unit &&
-    unit.type === UNIT.SETTLER &&
-    unitCiv?.isPlayer &&
-    hex.terrain === TERRAIN.WILDERNESS &&
-    !hex.cityOwnerId;
+  const isPlayerUnit = !!unit && !!unitCiv?.isPlayer;
+  const isPlayerBase = isPlayerUnit && unit.type === UNIT.BASE;
+  const canEngineerBuild = !!playerCiv?.traits?.stationCostMod;
+  const stationCost = canEngineerBuild
+    ? Math.max(1, Math.ceil(4 * playerCiv.traits.stationCostMod))
+    : 4;
+  const maxHp = unitDef?.hp ?? 0;
+  const needsRepair = unit && unitDef && (unit.hp ?? maxHp) < maxHp;
+  const onOil = hex.terrain === TERRAIN.OIL;
+  const onSlag = hex.terrain === TERRAIN.SLAG;
+  const fuel = playerCiv?.fuel ?? 0;
+  const scrap = playerCiv?.scrap ?? 0;
 
   return (
     <div className="selected-panel">
@@ -36,12 +47,11 @@ export default function SelectedPanel() {
           {pollution > 0 && (
             <span className="selected-poll"> · pollution {pollution}</span>
           )}
+          {hex.station && <span className="selected-poll"> · station</span>}
+          {hex.bombFuse > 0 && (
+            <span className="selected-poll"> · bomb fuse {hex.bombFuse}</span>
+          )}
         </div>
-        {cityCiv && (
-          <div className="selected-tag" style={{ background: cityCiv.color }}>
-            {cityCiv.name} City
-          </div>
-        )}
       </div>
       {unit && unitDef && unitCiv && (
         <div className="selected-unit">
@@ -53,22 +63,68 @@ export default function SelectedPanel() {
               {unitCiv.name} {unitDef.name}
             </div>
             <div className="unit-stats">
-              ATK {unitDef.atk} · DEF {unitDef.def} · MV {moveLeft}/{unitDef.move}
+              ATK {unitDef.atk} · DEF {unitDef.def} · HP {unit.hp ?? maxHp}/{maxHp}
+              {unitDef.move > 0 && ` · MV ${moveLeft}/${unitDef.move}`}
               {unitDef.ranged ? ' · Ranged' : ''}
             </div>
-            {unitCiv.isPlayer && moveLeft > 0 && unit.type !== UNIT.SETTLER && (
-              <div className="hint">Tap an adjacent hex to move or attack.</div>
+            {isPlayerUnit && unit.type !== UNIT.BASE && moveLeft > 0 && (
+              <div className="hint">Tap an adjacent hex to move or attack (2 fuel).</div>
             )}
-            {unitCiv.isPlayer && unit.type === UNIT.SETTLER && moveLeft > 0 && (
-              <div className="hint">Move or found a city on wilderness.</div>
+            {isPlayerBase && (
+              <div className="hint">Bases don't move. Deploy units below.</div>
             )}
           </div>
         </div>
       )}
       <div className="selected-actions">
-        {canFound && (
-          <button className="btn" onClick={() => foundCity(selectedHex)}>
-            Found City
+        {isPlayerUnit && onOil && !hex.wasExtractedThisTurn && (
+          <button className="btn" onClick={() => extractOilAt(selectedHex)}>
+            Extract Oil (+3 fuel)
+          </button>
+        )}
+        {isPlayerBase && (
+          <button
+            className="btn"
+            disabled={fuel < 3}
+            onClick={() => deployUnitOfType(UNIT.WARRIOR)}
+          >
+            Deploy Warrior (3 fuel)
+          </button>
+        )}
+        {isPlayerBase && (
+          <button
+            className="btn secondary"
+            disabled={fuel < 8}
+            onClick={() => deployUnitOfType(UNIT.RECLAIMER)}
+          >
+            Deploy Reclaimer (8 fuel)
+          </button>
+        )}
+        {isPlayerUnit && canEngineerBuild && !hex.station && (
+          <button
+            className="btn secondary"
+            disabled={scrap < stationCost}
+            onClick={() => buildStationAt(selectedHex)}
+          >
+            Build Station ({stationCost} scrap)
+          </button>
+        )}
+        {isPlayerUnit && needsRepair && (
+          <button
+            className="btn secondary"
+            disabled={scrap < 2}
+            onClick={() => repairUnitAt(selectedHex)}
+          >
+            Repair (+2 hp, 2 scrap)
+          </button>
+        )}
+        {onSlag && !playerCiv?.bombUsed && !hex.bombFuse && (
+          <button
+            className="btn warn"
+            disabled={fuel < 12}
+            onClick={() => reclamationBombAt(selectedHex)}
+          >
+            Reclamation Bomb (12 fuel)
           </button>
         )}
       </div>

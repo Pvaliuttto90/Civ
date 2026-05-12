@@ -1,5 +1,6 @@
 import { createUnit, pickBestUnitType } from './units.js';
 import { TERRAIN } from './terrain.js';
+import { key, neighbors, parseKey } from './hex.js';
 
 function goldPerCity(civ) {
   let g = 1;
@@ -13,10 +14,6 @@ function productionRate(civ) {
   return civ.techs.includes('industrialism') ? 1.5 : 1;
 }
 
-// Diesel & Slag Income Phase (turn structure spec Phase 1).
-// For each civ, accumulate fuel/scrap/ichor from occupied hexes, then
-// apply ichor damage on pollution-4+ tiles and kill units that hit 0
-// hp (dropping 1–3 scrap on the hex they died on).
 export function resolveIncomePhase(state) {
   let units = { ...state.units };
   const hexes = { ...state.hexes };
@@ -77,18 +74,17 @@ export function resolveIncomePhase(state) {
   return { ...state, units, hexes, civs };
 }
 
-// Pollution Phase (spec Phase 3). Oil hexes that were extracted this
-// turn add pollutionPerExtract; anything reaching 5 converts to slag
-// and stores its previous terrain so a Reclamation Bomb can restore
-// it later. wasExtractedThisTurn is cleared on the way out. Commit 3
-// will wire extractOil to flip the flag with the extracting civId.
 export function resolvePollutionPhase(state) {
   const hexes = { ...state.hexes };
+  let units = { ...state.units };
+  const explosions = [];
 
-  for (const [k, hex] of Object.entries(hexes)) {
+  for (const k of Object.keys(hexes)) {
+    const hex = hexes[k];
     let pollution = hex.pollution ?? 0;
     let terrain = hex.terrain;
     let preSlagTerrain = hex.preSlagTerrain;
+    let bombFuse = hex.bombFuse;
     const flag = hex.wasExtractedThisTurn;
 
     if (terrain === TERRAIN.OIL && flag) {
@@ -97,7 +93,23 @@ export function resolvePollutionPhase(state) {
       pollution = Math.min(5, pollution + ppe);
     }
 
-    if (pollution >= 5 && terrain !== TERRAIN.SLAG) {
+    if (hex.station && (hex.station.hp ?? 0) > 0) {
+      pollution = Math.max(0, pollution - 1);
+    }
+
+    let exploded = false;
+    if (bombFuse != null && bombFuse > 0) {
+      bombFuse -= 1;
+      if (bombFuse === 0) {
+        exploded = true;
+        terrain = preSlagTerrain || TERRAIN.WILDERNESS;
+        pollution = 2;
+        preSlagTerrain = null;
+        bombFuse = null;
+      }
+    }
+
+    if (!exploded && pollution >= 5 && terrain !== TERRAIN.SLAG) {
       preSlagTerrain = terrain;
       terrain = TERRAIN.SLAG;
       pollution = 5;
@@ -108,17 +120,42 @@ export function resolvePollutionPhase(state) {
       terrain,
       pollution,
       preSlagTerrain,
+      bombFuse,
       wasExtractedThisTurn: false,
     };
+
+    if (exploded) explosions.push(k);
   }
 
-  return { ...state, hexes };
+  // Reclamation Bomb explosion: 2 damage to units on adjacent hexes.
+  for (const k of explosions) {
+    const { q, r } = parseKey(k);
+    for (const n of neighbors(q, r)) {
+      const nk = key(n.q, n.r);
+      const nh = hexes[nk];
+      if (!nh || !nh.unitId) continue;
+      const u = units[nh.unitId];
+      if (!u) continue;
+      const newHp = (u.hp ?? 3) - 2;
+      if (newHp <= 0) {
+        const drop = 1 + Math.floor(Math.random() * 3);
+        hexes[nk] = {
+          ...nh,
+          unitId: null,
+          scrapPile: (nh.scrapPile || 0) + drop,
+        };
+        delete units[u.id];
+      } else {
+        units[u.id] = { ...u, hp: newHp };
+      }
+    }
+  }
+
+  return { ...state, hexes, units };
 }
 
-// Legacy Civ upkeep — gold per city, city production, move-budget
-// reset, elimination flag. Still firing during graft so AI civs that
-// keep founding cities don't break. Will be deleted in the strip pass
-// (or refactored to handle Base production instead).
+// Legacy Civ upkeep — still firing during graft so any City that
+// somehow exists keeps producing. Bases don't go through this path.
 export function applyUpkeep(state) {
   const civs = { ...state.civs };
   let units = { ...state.units };
