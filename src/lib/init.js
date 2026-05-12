@@ -1,12 +1,12 @@
 import { CIV_IDS, CIVS } from './civs.js';
 import { generateMap, TERRAIN } from './terrain.js';
-import { hexDistance, key as hexKey, parseKey } from './hex.js';
+import { hexDistance, parseKey } from './hex.js';
 import { createUnit, UNIT } from './units.js';
+import { withFogUpdate } from './fog.js';
 
 // Build the starting game state: terrain + one Settler per civ on a
 // random plains hex, with no two starts within 3 hexes of each other.
 export function buildInitialState() {
-  // Try a few times to find a valid placement set; regenerate map if not.
   for (let attempt = 0; attempt < 20; attempt++) {
     const hexes = generateMap();
     const plains = Object.entries(hexes)
@@ -53,12 +53,13 @@ export function buildInitialState() {
         gold: 0,
         techs: [],
         isEliminated: false,
+        explored: [],
       };
       const u = createUnit(UNIT.SETTLER, civId);
       units[u.id] = u;
       hexes[picks[i]] = { ...hexes[picks[i]], unitId: u.id };
     }
-    return { hexes, units, civs };
+    return withFogUpdate({ hexes, units, civs }, 'player');
   }
   // Last-resort fallback: blank map.
   return { hexes: generateMap(), units: {}, civs: {} };

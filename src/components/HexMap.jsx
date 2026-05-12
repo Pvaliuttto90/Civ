@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../store.js';
 import {
   axialToPixel,
@@ -10,6 +10,7 @@ import {
 } from '../lib/hex.js';
 import { TERRAIN_COLORS } from '../lib/terrain.js';
 import { UNIT_DEFS } from '../lib/units.js';
+import { computeVisible } from '../lib/fog.js';
 
 function mapExtents(hexes) {
   let minX = Infinity,
@@ -39,6 +40,15 @@ export default function HexMap() {
   const civs = useGame((s) => s.civs);
   const selectedHex = useGame((s) => s.selectedHex);
   const tapHex = useGame((s) => s.tapHex);
+
+  const visibleSet = useMemo(
+    () => computeVisible({ hexes, units }, 'player'),
+    [hexes, units]
+  );
+  const exploredSet = useMemo(
+    () => new Set(civs.player?.explored || []),
+    [civs]
+  );
 
   const extents = mapExtents(hexes);
 
@@ -159,15 +169,31 @@ export default function HexMap() {
         {Object.entries(hexes).map(([k, hex]) => {
           const { q, r } = parseKey(k);
           const { x, y } = axialToPixel(q, r);
+          const isVisible = visibleSet.has(k);
+          const isExplored = isVisible || exploredSet.has(k);
           const isSelected = selectedHex === k;
+
+          if (!isExplored) {
+            return (
+              <g key={k} onClick={() => onHexClick(k)}>
+                <polygon
+                  className={`hex${isSelected ? ' selected' : ''}`}
+                  points={hexPoints(x, y)}
+                  fill="#0b0b18"
+                />
+              </g>
+            );
+          }
+
           const ownerCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
-          const unit = hex.unitId ? units[hex.unitId] : null;
+          const unit = isVisible && hex.unitId ? units[hex.unitId] : null;
           const unitCiv = unit ? civs[unit.civId] : null;
           const def = unit ? UNIT_DEFS[unit.type] : null;
           const exhausted = unit && def ? unit.moved >= def.move : false;
           const progress = ownerCiv ? Math.min(3, hex.cityProgress ?? 0) : 0;
+
           return (
-            <g key={k} onClick={() => onHexClick(k)}>
+            <g key={k} onClick={() => onHexClick(k)} opacity={isVisible ? 1 : 0.55}>
               <polygon
                 className={`hex${isSelected ? ' selected' : ''}`}
                 points={hexPoints(x, y)}
@@ -202,22 +228,26 @@ export default function HexMap() {
                     strokeOpacity="0.5"
                     strokeWidth={1}
                   />
-                  <rect
-                    x={x - 14}
-                    y={y - 30}
-                    width={28}
-                    height={3}
-                    rx={1}
-                    fill="#00000066"
-                  />
-                  <rect
-                    x={x - 14}
-                    y={y - 30}
-                    width={28 * (progress / 3)}
-                    height={3}
-                    rx={1}
-                    fill="#ffd166"
-                  />
+                  {isVisible && (
+                    <>
+                      <rect
+                        x={x - 14}
+                        y={y - 30}
+                        width={28}
+                        height={3}
+                        rx={1}
+                        fill="#00000066"
+                      />
+                      <rect
+                        x={x - 14}
+                        y={y - 30}
+                        width={28 * (progress / 3)}
+                        height={3}
+                        rx={1}
+                        fill="#ffd166"
+                      />
+                    </>
+                  )}
                 </g>
               )}
               {unit && unitCiv && def && (
