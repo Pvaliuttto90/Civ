@@ -50,10 +50,11 @@ export function resolveAttack(state, attacker, defender, fromKey, toKey) {
   return { ...state, units: newUnits, hexes: newHexes };
 }
 
+// Legacy city founding — will be removed when Bases replace cities.
 export function foundCityAt(state, hexKey, civId) {
   const hex = state.hexes[hexKey];
   if (!hex) return state;
-  if (hex.terrain !== TERRAIN.PLAINS) return state;
+  if (hex.terrain !== TERRAIN.WILDERNESS) return state;
   const unit = hex.unitId ? state.units[hex.unitId] : null;
   if (!unit || unit.type !== UNIT.SETTLER) return state;
   if (unit.civId !== civId) return state;
@@ -78,7 +79,10 @@ export function findUnitLocation(hexes, unitId) {
 }
 
 export function canEnter(state, hex, unit) {
-  if (hex.terrain === TERRAIN.WATER) return false;
+  if (hex.terrain === TERRAIN.SLAG) {
+    const civ = state.civs?.[unit.civId];
+    if (!civ?.traits?.slagMoveCost) return false;
+  }
   if (hex.unitId) {
     const occupant = state.units[hex.unitId];
     if (occupant && occupant.civId === unit.civId) return false;
@@ -86,6 +90,10 @@ export function canEnter(state, hex, unit) {
   return true;
 }
 
-export function terrainCost(hex) {
+export function terrainCost(hex, unit, state) {
+  if (hex.terrain === TERRAIN.SLAG) {
+    const civ = state?.civs?.[unit?.civId];
+    return civ?.traits?.slagMoveCost ?? TERRAIN_COST[hex.terrain];
+  }
   return TERRAIN_COST[hex.terrain];
 }

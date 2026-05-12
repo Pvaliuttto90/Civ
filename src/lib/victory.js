@@ -1,24 +1,31 @@
 import { withFogUpdate } from './fog.js';
 
-// Compute the win/lose state. Returns null if the game continues.
+function getPlayerCivId(state) {
+  if (state.playerCivId) return state.playerCivId;
+  const civ = Object.values(state.civs || {}).find((c) => c.isPlayer);
+  return civ ? civ.id : null;
+}
+
+// Legacy Civ-style victory check. Phase-4 commit will replace this
+// with per-faction win conditions keyed off civ.traits.winCondition.
 export function checkVictory(state) {
-  const player = state.civs.player;
+  const playerCivId = getPlayerCivId(state);
+  if (!playerCivId) return null;
+  const player = state.civs[playerCivId];
   if (!player) return null;
 
   const cityOwners = Object.values(state.hexes)
     .map((h) => h.cityOwnerId)
     .filter(Boolean);
   const totalCities = cityOwners.length;
-  const playerCities = cityOwners.filter((o) => o === 'player').length;
+  const playerCities = cityOwners.filter((o) => o === playerCivId).length;
   const playerUnits = Object.values(state.units).filter(
-    (u) => u.civId === 'player'
+    (u) => u.civId === playerCivId
   ).length;
   const enemyUnits = Object.values(state.units).filter(
-    (u) => u.civId !== 'player'
+    (u) => u.civId !== playerCivId
   ).length;
 
-  // Defeat first — if the player has nothing left, no other condition
-  // can flip it back to a win.
   if (playerUnits === 0 && playerCities === 0) {
     return {
       won: false,
@@ -28,10 +35,6 @@ export function checkVictory(state) {
     };
   }
 
-  // Don't trigger a dominance win before opponents have had a chance to
-  // found their first city. A civ is "in the game" if it still has any
-  // units or cities; dominance only fires once every such civ owns a
-  // city (otherwise founding your first turn-1 city counts as 100%).
   const cityCountByCiv = {};
   for (const o of cityOwners) cityCountByCiv[o] = (cityCountByCiv[o] || 0) + 1;
   const unitsByCiv = {};
@@ -64,7 +67,8 @@ export function checkVictory(state) {
 
 export function withVictoryCheck(state) {
   if (state.phase === 'result') return state;
-  const next = withFogUpdate(state, 'player');
+  const playerCivId = getPlayerCivId(state);
+  const next = playerCivId ? withFogUpdate(state, playerCivId) : state;
   const result = checkVictory(next);
   if (result) return { ...next, phase: 'result', result };
   return next;

@@ -7,13 +7,17 @@ export default function TopBar() {
   const phase = useGame((s) => s.phase);
   const civs = useGame((s) => s.civs);
   const hexes = useGame((s) => s.hexes);
-  const playerGold = civs.player?.gold ?? 0;
-  const techCount = civs.player?.techs.length ?? 0;
+  const playerCivId = useGame((s) => s.playerCivId);
+  const player = playerCivId ? civs[playerCivId] : null;
+  const playerGold = player?.gold ?? 0;
+  const techCount = player?.techs.length ?? 0;
 
   const cityCount = {};
   for (const h of Object.values(hexes)) {
     if (h.cityOwnerId) cityCount[h.cityOwnerId] = (cityCount[h.cityOwnerId] || 0) + 1;
   }
+
+  if (phase === 'faction-pick') return null;
 
   return (
     <div className="top-bar">

@@ -5,6 +5,7 @@ import EndTurnButton from './components/EndTurnButton.jsx';
 import TechButton from './components/TechButton.jsx';
 import TechModal from './components/TechModal.jsx';
 import ResultScreen from './components/ResultScreen.jsx';
+import FactionPicker from './components/FactionPicker.jsx';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <SelectedPanel />
       <TechModal />
       <ResultScreen />
+      <FactionPicker />
     </div>
   );
 }

@@ -40,14 +40,21 @@ export default function HexMap() {
   const civs = useGame((s) => s.civs);
   const selectedHex = useGame((s) => s.selectedHex);
   const tapHex = useGame((s) => s.tapHex);
+  const playerCivId = useGame((s) => s.playerCivId);
 
   const visibleSet = useMemo(
-    () => computeVisible({ hexes, units }, 'player'),
-    [hexes, units]
+    () =>
+      playerCivId
+        ? computeVisible({ hexes, units, civs }, playerCivId)
+        : new Set(),
+    [hexes, units, civs, playerCivId]
   );
   const exploredSet = useMemo(
-    () => new Set(civs.player?.explored || []),
-    [civs]
+    () =>
+      new Set(
+        playerCivId ? civs[playerCivId]?.explored || [] : []
+      ),
+    [civs, playerCivId]
   );
 
   const extents = mapExtents(hexes);
@@ -191,6 +198,7 @@ export default function HexMap() {
           const def = unit ? UNIT_DEFS[unit.type] : null;
           const exhausted = unit && def ? unit.moved >= def.move : false;
           const progress = ownerCiv ? Math.min(3, hex.cityProgress ?? 0) : 0;
+          const pollution = Math.max(0, Math.min(5, hex.pollution ?? 0));
 
           return (
             <g key={k} onClick={() => onHexClick(k)} opacity={isVisible ? 1 : 0.55}>
@@ -199,6 +207,22 @@ export default function HexMap() {
                 points={hexPoints(x, y)}
                 fill={TERRAIN_COLORS[hex.terrain]}
               />
+              {pollution > 0 && (
+                <g pointerEvents="none">
+                  {Array.from({ length: pollution }).map((_, i) => (
+                    <circle
+                      key={i}
+                      cx={x - 12 + i * 6}
+                      cy={y + 22}
+                      r={2}
+                      fill={pollution >= 4 ? '#b14aff' : '#ff8a3a'}
+                      stroke="#000"
+                      strokeOpacity="0.4"
+                      strokeWidth={0.5}
+                    />
+                  ))}
+                </g>
+              )}
               {ownerCiv && (
                 <polygon
                   points={hexPoints(x, y)}
