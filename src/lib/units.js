@@ -3,16 +3,17 @@ export const UNIT = {
   WARRIOR: 'warrior',
   ARCHER: 'archer',
   KNIGHT: 'knight',
+  BASE: 'base',
+  RECLAIMER: 'reclaimer',
 };
 
-// hp added so ichor damage in the income phase actually means something.
-// Combat is still one-roll-decisive in actions.js — hp only changes via
-// non-combat damage sources for now (ichor seep, reclaimer death).
 export const UNIT_DEFS = {
   [UNIT.SETTLER]: { name: 'Settler', atk: 0, def: 1, move: 2, hp: 2, glyph: 'S' },
   [UNIT.WARRIOR]: { name: 'Warrior', atk: 2, def: 2, move: 2, hp: 3, glyph: 'W' },
   [UNIT.ARCHER]: { name: 'Archer', atk: 3, def: 1, move: 2, hp: 2, ranged: true, glyph: 'A' },
   [UNIT.KNIGHT]: { name: 'Knight', atk: 4, def: 3, move: 3, hp: 4, glyph: 'K' },
+  [UNIT.BASE]: { name: 'Base', atk: 0, def: 4, move: 0, hp: 10, glyph: 'B', immobile: true },
+  [UNIT.RECLAIMER]: { name: 'Reclaimer', atk: 1, def: 1, move: 1, hp: 2, glyph: 'R' },
 };
 
 let nextUnitId = 1;

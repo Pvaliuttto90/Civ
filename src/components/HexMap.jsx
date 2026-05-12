@@ -192,16 +192,17 @@ export default function HexMap() {
             );
           }
 
-          const ownerCiv = hex.cityOwnerId ? civs[hex.cityOwnerId] : null;
           const unit = isVisible && hex.unitId ? units[hex.unitId] : null;
           const unitCiv = unit ? civs[unit.civId] : null;
           const def = unit ? UNIT_DEFS[unit.type] : null;
           const exhausted = unit && def ? unit.moved >= def.move : false;
-          const progress = ownerCiv ? Math.min(3, hex.cityProgress ?? 0) : 0;
           const pollution = Math.max(0, Math.min(5, hex.pollution ?? 0));
           const scrapPile = isVisible ? (hex.scrapPile ?? 0) : 0;
-          const showHp =
-            unit && def && (unit.hp ?? def.hp) < def.hp;
+          const showHp = unit && def && (unit.hp ?? def.hp) < def.hp;
+          const station = isVisible ? hex.station : null;
+          const bombFuse = isVisible ? (hex.bombFuse ?? 0) : 0;
+          const isBase = def?.immobile;
+          const unitRadius = isBase ? 22 : 18;
 
           return (
             <g key={k} onClick={() => onHexClick(k)} opacity={isVisible ? 1 : 0.55}>
@@ -234,7 +235,7 @@ export default function HexMap() {
                     width={14}
                     height={12}
                     rx={2}
-                    fill="#7a7a90"
+                    fill="#9a9ab0"
                     stroke="#000"
                     strokeOpacity="0.5"
                   />
@@ -243,81 +244,76 @@ export default function HexMap() {
                     y={y + 3}
                     textAnchor="middle"
                     fontSize={9}
-                    fontWeight={700}
+                    fontWeight={800}
                     fill="#1a1a2e"
                   >
                     {scrapPile}
                   </text>
                 </g>
               )}
-              {ownerCiv && (
-                <polygon
-                  points={hexPoints(x, y)}
-                  fill={ownerCiv.color}
-                  fillOpacity="0.35"
-                  pointerEvents="none"
-                />
-              )}
-              {ownerCiv && (
+              {station && (
                 <g pointerEvents="none">
-                  <rect
-                    x={x - 10}
-                    y={y - 22}
-                    width={20}
-                    height={14}
-                    rx={2}
-                    fill={ownerCiv.color}
-                    stroke="#000"
-                    strokeOpacity="0.4"
-                  />
-                  <line
-                    x1={x - 10}
-                    y1={y - 22}
-                    x2={x - 10}
-                    y2={y + 4}
+                  <circle
+                    cx={x - 18}
+                    cy={y - 18}
+                    r={7}
+                    fill="#5fb55f"
                     stroke="#000"
                     strokeOpacity="0.5"
                     strokeWidth={1}
                   />
-                  {isVisible && (
-                    <>
-                      <rect
-                        x={x - 14}
-                        y={y - 30}
-                        width={28}
-                        height={3}
-                        rx={1}
-                        fill="#00000066"
-                      />
-                      <rect
-                        x={x - 14}
-                        y={y - 30}
-                        width={28 * (progress / 3)}
-                        height={3}
-                        rx={1}
-                        fill="#ffd166"
-                      />
-                    </>
-                  )}
+                  <text
+                    x={x - 18}
+                    y={y - 14}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fontWeight={800}
+                    fill="#0a1a0a"
+                  >
+                    S
+                  </text>
+                </g>
+              )}
+              {bombFuse > 0 && (
+                <g pointerEvents="none">
+                  <circle
+                    cx={x}
+                    cy={y - 26}
+                    r={10}
+                    fill="#ff8a3a"
+                    stroke="#000"
+                    strokeOpacity="0.5"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={x}
+                    y={y - 22}
+                    textAnchor="middle"
+                    fontSize={12}
+                    fontWeight={800}
+                    fill="#1a1a2e"
+                  >
+                    {bombFuse}
+                  </text>
                 </g>
               )}
               {unit && unitCiv && def && (
                 <g pointerEvents="none" opacity={exhausted ? 0.55 : 1}>
                   <circle
                     cx={x}
-                    cy={y + (ownerCiv ? 12 : 0)}
-                    r={18}
+                    cy={y}
+                    r={unitRadius}
                     fill={unitCiv.color}
                     stroke="#000"
                     strokeOpacity="0.5"
-                    strokeWidth={1.5}
+                    strokeWidth={isBase ? 2.5 : 1.5}
                   />
                   <text
                     x={x}
-                    y={y + (ownerCiv ? 12 : 0) + 5}
+                    y={y + 5}
                     textAnchor="middle"
-                    fontSize={18}
-                    fontWeight={700}
+                    fontSize={isBase ? 20 : 18}
+                    fontWeight={800}
                     fill="#fff"
                   >
                     {def.glyph}
@@ -325,7 +321,7 @@ export default function HexMap() {
                   {showHp && (
                     <text
                       x={x}
-                      y={y + (ownerCiv ? 32 : 20)}
+                      y={y + unitRadius + 10}
                       textAnchor="middle"
                       fontSize={9}
                       fontWeight={700}

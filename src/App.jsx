@@ -2,8 +2,6 @@ import HexMap from './components/HexMap.jsx';
 import TopBar from './components/TopBar.jsx';
 import SelectedPanel from './components/SelectedPanel.jsx';
 import EndTurnButton from './components/EndTurnButton.jsx';
-import TechButton from './components/TechButton.jsx';
-import TechModal from './components/TechModal.jsx';
 import ResultScreen from './components/ResultScreen.jsx';
 import FactionPicker from './components/FactionPicker.jsx';
 
@@ -13,9 +11,7 @@ export default function App() {
       <TopBar />
       <HexMap />
       <EndTurnButton />
-      <TechButton />
       <SelectedPanel />
-      <TechModal />
       <ResultScreen />
       <FactionPicker />
     </div>

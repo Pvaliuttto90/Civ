@@ -4,8 +4,13 @@ import { UNIT, UNIT_DEFS } from './lib/units.js';
 import { TERRAIN, TERRAIN_COST } from './lib/terrain.js';
 import { hexDistance, parseKey } from './lib/hex.js';
 import {
+  buildStation,
+  deployUnit,
+  extractOil,
   foundCityAt,
   moveUnit,
+  reclamationBomb,
+  repairUnit,
   resolveAttack,
 } from './lib/actions.js';
 import { canResearch, ERA_COSTS, TECHS } from './lib/tech.js';
@@ -18,7 +23,7 @@ import {
 import { withVictoryCheck } from './lib/victory.js';
 import { withFogUpdate } from './lib/fog.js';
 
-const AI_DELAY_MS = 220;
+const AI_DELAY_MS = 260;
 
 export const useGame = create((set, get) => ({
   ...buildInitialState(),
@@ -39,13 +44,12 @@ export const useGame = create((set, get) => ({
     }
     let startingHex = null;
     for (const [k, h] of Object.entries(s.hexes)) {
-      if (h.unitId && s.units[h.unitId]?.civId === factionId) {
+      if (h.unitId && s.units[h.unitId]?.civId === factionId && s.units[h.unitId]?.type === UNIT.BASE) {
         startingHex = k;
         break;
       }
     }
     let next = { ...s, civs, playerCivId: factionId, phase: 'player' };
-    // Turn 1's income phase fires before the player gets to act.
     next = resolveIncomePhase(next);
     next = withFogUpdate(next, factionId);
     set({ ...next, selectedHex: startingHex });
@@ -62,29 +66,35 @@ export const useGame = create((set, get) => ({
       const fromHex = s.hexes[fromKey];
       const myUnit = fromHex?.unitId ? s.units[fromHex.unitId] : null;
       if (myUnit && s.civs[myUnit.civId]?.isPlayer) {
+        const def = UNIT_DEFS[myUnit.type];
+        if (def?.immobile) {
+          set({ selectedHex: toKey === s.selectedHex ? null : toKey });
+          return;
+        }
         const dist = hexDistance(parseKey(fromKey), parseKey(toKey));
         if (dist === 1) {
-          const def = UNIT_DEFS[myUnit.type];
           const moveLeft = def.move - myUnit.moved;
           if (moveLeft > 0) {
             const targetUnit = target.unitId ? s.units[target.unitId] : null;
             if (targetUnit && targetUnit.civId !== myUnit.civId) {
-              if (myUnit.type !== UNIT.SETTLER) {
-                const next = resolveAttack(s, myUnit, targetUnit, fromKey, toKey);
-                const attackerSurvived = !!next.units[myUnit.id];
-                const ranged = !!def.ranged;
-                set(
-                  withVictoryCheck({
-                    ...next,
-                    selectedHex: attackerSurvived
-                      ? ranged
-                        ? fromKey
-                        : toKey
-                      : null,
-                  })
-                );
+              if ((s.civs[s.playerCivId]?.fuel ?? 0) < 2) {
+                set({ selectedHex: toKey });
                 return;
               }
+              const next = resolveAttack(s, myUnit, targetUnit, fromKey, toKey);
+              const attackerSurvived = !!next.units[myUnit.id];
+              const ranged = !!def.ranged;
+              set(
+                withVictoryCheck({
+                  ...next,
+                  selectedHex: attackerSurvived
+                    ? ranged
+                      ? fromKey
+                      : toKey
+                    : null,
+                })
+              );
+              return;
             } else if (!targetUnit && target.terrain !== TERRAIN.SLAG) {
               const cost = TERRAIN_COST[target.terrain];
               if (moveLeft >= cost) {
@@ -128,14 +138,36 @@ export const useGame = create((set, get) => ({
       };
     }),
 
-  // End-of-turn pipeline. Order:
-  //   1. AI Action phase (player has just finished theirs).
-  //   2. Pollution Phase — oil ticks, slag conversion at 5.
-  //   3. Legacy upkeep — gold/production/move reset/elimination.
-  //   4. Advance turn counter.
-  //   5. Event Phase (commit 4 will wire this slot).
-  //   6. Income Phase for the new turn — fuel/scrap/ichor and ichor damage.
-  //   7. Victory check + player fog update.
+  extractOilAt: (hexKey) =>
+    set((s) => {
+      if (s.phase !== 'player' || !s.playerCivId) return s;
+      return withVictoryCheck(extractOil(s, hexKey, s.playerCivId));
+    }),
+
+  deployUnitOfType: (type) =>
+    set((s) => {
+      if (s.phase !== 'player' || !s.playerCivId) return s;
+      return withVictoryCheck(deployUnit(s, s.playerCivId, type));
+    }),
+
+  buildStationAt: (hexKey) =>
+    set((s) => {
+      if (s.phase !== 'player' || !s.playerCivId) return s;
+      return withVictoryCheck(buildStation(s, hexKey, s.playerCivId));
+    }),
+
+  repairUnitAt: (hexKey) =>
+    set((s) => {
+      if (s.phase !== 'player' || !s.playerCivId) return s;
+      return withVictoryCheck(repairUnit(s, hexKey, s.playerCivId));
+    }),
+
+  reclamationBombAt: (hexKey) =>
+    set((s) => {
+      if (s.phase !== 'player' || !s.playerCivId) return s;
+      return withVictoryCheck(reclamationBomb(s, hexKey, s.playerCivId));
+    }),
+
   endTurn: () => {
     const s = get();
     if (s.phase !== 'player') return;
@@ -143,7 +175,6 @@ export const useGame = create((set, get) => ({
     setTimeout(() => {
       const cur = get();
       if (cur.phase !== 'ai') return;
-
       let next = cur;
       next = runAI(next);
       next = resolvePollutionPhase(next);
